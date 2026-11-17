@@ -1,3 +1,12 @@
+import axios from 'axios'
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipAuth?: boolean
+    _retry?: boolean
+  }
+}
+
 const BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '')
 const ACCESS_KEY = 'manka_access_token'
 const REFRESH_KEY = 'manka_refresh_token'
@@ -23,56 +32,51 @@ export const session = {
 }
 
 export function describeError(err: unknown): string {
+  if (axios.isCancel(err)) return 'Solicitud cancelada.'
   if (err instanceof ApiError) {
-    if (err.status === 0) return 'No se puede conectar al backend. Verifica que Spring Boot esté ejecutándose en el puerto 8083.'
+    if (err.status === 0) return err.message
     if (err.status === 401) return 'Tu sesión ha vencido o las credenciales son incorrectas.'
     return err.message
   }
   return err instanceof Error ? err.message : 'Ocurrió un error inesperado.'
 }
 
+function parse(data: unknown): unknown {
+  if (data === '' || data === undefined) return null
+  if (typeof data !== 'string') return data
+  try { return JSON.parse(data) } catch { return data }
+}
 
 function errorText(data: unknown, status: number): string {
-  if (data && typeof data === 'object') {
-    const o = data as Record<string, unknown>;
-
-    // Mostrar errores de validación de Spring Boot
+  const parsed = parse(data)
+  if (parsed && typeof parsed === 'object') {
+    const o = parsed as Record<string, unknown>
     if (o.errors && typeof o.errors === 'object') {
-      const errors = o.errors as Record<string, unknown>;
-
+      const errors = o.errors as Record<string, unknown>
       const names: Record<string, string> = {
-        firstName: 'Nombre',
-        lastName: 'Apellido',
-        email: 'Correo electrónico',
-        password: 'Contraseña',
-      };
-
+        firstName: 'Nombre', lastName: 'Apellido',
+        email: 'Correo electrónico', password: 'Contraseña',
+      }
       const messages = Object.entries(errors)
         .filter(([, message]) => typeof message === 'string')
-        .map(([field, message]) =>
-          `${names[field] ?? field}: ${message}`
-        );
-
-      if (messages.length > 0) {
-        return messages.join(' | ');
-      }
+        .map(([field, message]) => `${names[field] ?? field}: ${message}`)
+      if (messages.length) return messages.join(' | ')
     }
-
-    // Otros errores HTTP
     for (const key of ['detail', 'message', 'title', 'error']) {
-      if (typeof o[key] === 'string' && o[key]) {
-        return String(o[key]);
-      }
+      if (typeof o[key] === 'string' && o[key]) return String(o[key])
     }
   }
-
-  return `El servidor respondió con HTTP ${status}`;
+  return `El servidor respondió con HTTP ${status}`
 }
 
-
-function parse(text: string): unknown {
-  try { return text ? JSON.parse(text) : null } catch { return text }
-}
+type Tokens = { token: string; refreshToken: string }
+const client = axios.create({
+  baseURL: BASE,
+  timeout: 20000,
+  headers: { Accept: 'application/json' },
+})
+// Instancia separada: el refresh no debe entrar en los interceptores de autenticación.
+const refreshClient = axios.create({ baseURL: BASE, timeout: 20000 })
 
 let refreshing: Promise<boolean> | null = null
 async function renewSession(): Promise<boolean> {
@@ -81,54 +85,83 @@ async function renewSession(): Promise<boolean> {
   if (!refreshToken) return false
   refreshing = (async () => {
     try {
-      const response = await fetch(`${BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      })
-      if (!response.ok) return false
-      const tokens = await response.json() as { token?: string; refreshToken?: string }
-      if (!tokens.token || !tokens.refreshToken) return false
+      const response = await refreshClient.post<Tokens>('/auth/refresh', { refreshToken })
+      const tokens = response.data
+      if (!tokens?.token || !tokens?.refreshToken) return false
       session.save(tokens.token, tokens.refreshToken)
       return true
-    } catch { return false }
+    } catch {
+      return false
+    }
   })()
   try { return await refreshing } finally { refreshing = null }
 }
 
+client.interceptors.request.use(config => {
+  if (config.skipAuth) {
+    config.headers.delete('Authorization')
+  } else {
+    const access = session.access()
+    if (access) config.headers.set('Authorization', `Bearer ${access}`)
+  }
+  return config
+})
+
+client.interceptors.response.use(
+  response => {
+    response.data = parse(response.data) // HTTP 204 => null
+    return response
+  },
+  async (error: unknown) => {
+    // Respetar AbortController: una cancelación no es un error de red.
+    if (axios.isCancel(error)) return Promise.reject(error)
+    if (!axios.isAxiosError(error)) return Promise.reject(error)
+
+    const original = error.config
+    if (
+      error.response?.status === 401 && original &&
+      !original.skipAuth && !original._retry && session.refresh()
+    ) {
+      original._retry = true
+      if (await renewSession()) return client.request(original)
+      session.clear()
+      window.dispatchEvent(new Event('manka:session-expired'))
+    }
+
+    const status = error.response?.status ?? 0
+    const message = status
+      ? errorText(error.response?.data, status)
+      : error.code === 'ECONNABORTED'
+        ? 'La solicitud tardó demasiado. Intenta nuevamente.'
+        : 'No se puede conectar con la API. Comprueba tu conexión.'
+    return Promise.reject(new ApiError(status, message))
+  },
+)
+
 type Query = Record<string, string | number | boolean | null | undefined>
-interface Options { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; query?: Query; body?: unknown; signal?: AbortSignal; auth?: boolean }
+type Options = {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  query?: Query
+  body?: unknown
+  signal?: AbortSignal
+  auth?: boolean
+}
 
 export async function api<T>(path: string, options: Options = {}): Promise<T> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(options.query ?? {})) {
-    if (value !== null && value !== undefined && value !== '') params.set(key, String(value))
-  }
-  const url = `${BASE}${path}${params.size ? `?${params.toString()}` : ''}`
-  const request = async (retry: boolean): Promise<T> => {
-    const headers: Record<string, string> = { Accept: 'application/json' }
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json'
-    if (options.auth !== false && session.access()) headers.Authorization = `Bearer ${session.access()}`
-    let response: Response
-    try {
-      response = await fetch(url, {
-        method: options.method || 'GET',
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: options.signal,
-      })
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error
-      throw new ApiError(0, 'Sin conexión con Spring Boot')
+    if (value !== null && value !== undefined && value !== '') {
+      params.set(key, String(value))
     }
-    if (response.status === 401 && retry && options.auth !== false && session.refresh()) {
-      if (await renewSession()) return request(false)
-      session.clear()
-      window.dispatchEvent(new Event('manka:session-expired'))
-    }
-    const data = parse(await response.text())
-    if (!response.ok) throw new ApiError(response.status, errorText(data, response.status))
-    return data as T
   }
-  return request(true)
+  const url = `${path}${params.size ? `?${params.toString()}` : ''}`
+  const response = await client.request<T>({
+    url,
+    method: options.method ?? 'GET',
+    data: options.body,
+    signal: options.signal,
+    skipAuth: options.auth === false,
+    headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
+  })
+  return response.data
 }
