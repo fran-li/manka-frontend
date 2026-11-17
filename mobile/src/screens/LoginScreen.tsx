@@ -130,7 +130,7 @@ export default function LoginScreen() {
           color: palette.muted,
         }}
       >
-        ¿Todavía no tienes cuenta?{' '}
+        ¿Todavía no tienes una cuenta?{' '}
         <Link
           href="/(auth)/register"
           style={{
