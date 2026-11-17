@@ -63,9 +63,7 @@ export function AdminPage() {
     const question = hasAdmin
       ? `¿Revocar el rol ADMIN a ${fullName} (${target.email})? Dejará de acceder al panel de administración.`
       : `¿Conceder el rol ADMIN a ${fullName} (${target.email})? Podrá consultar usuarios y cambiar sus roles.`
-    if (!window.confirm(`${verb} permisos de administrador
-
-${question}`)) return
+    if (!window.confirm(`${verb} permisos de administrador${question}`)) return
 
     setBusyId(target.id)
     setError('')
@@ -82,6 +80,53 @@ ${question}`)) return
       setBusyId(null)
     }
   }
+
+
+  async function deleteUser(target: User) {
+    if (
+      busyId !== null ||
+      target.id === currentUser?.id ||
+      isAdmin(target)
+    ) {
+      return
+    }
+
+    const fullName =
+      `${target.firstName} ${target.lastName}`.trim() ||
+      target.email
+
+    const confirmed = window.confirm(
+      `¿Eliminar definitivamente a ${fullName}?\n\n` +
+      `Correo: ${target.email}\n\n` +
+      `Se eliminará su cuenta y sus datos personales asociados. ` +
+      `Para volver a utilizar Manka deberá registrarse nuevamente.\n\n` +
+      `Esta acción no se puede deshacer.`
+    )
+
+    if (!confirmed) return
+
+    setBusyId(target.id)
+    setError('')
+    setMessage('')
+
+    try {
+      await adminApi.deleteUser(target.id)
+
+      setUsers(prev =>
+        prev.filter(user => user.id !== target.id)
+      )
+
+      setMessage(
+        `La cuenta de ${fullName} fue eliminada correctamente.`
+      )
+    } catch (e) {
+      setError(describeError(e))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+
 
   return <>
     <PageIntro eyebrow="GESTIÓN DE MANKA" title="Panel de administración" subtitle="Consulta las cuentas registradas y gestiona quién tiene permisos de administrador." />
@@ -137,12 +182,44 @@ ${question}`)) return
                     <td><div className="admin-user"><span className="admin-user-avatar" aria-hidden="true">{(person.firstName || person.email).slice(0, 1).toUpperCase()}</span><span><strong>{name}</strong><small>ID #{person.id}{own ? ' · Tu cuenta' : ''}</small></span></div></td>
                     <td className="admin-email">{person.email}</td>
                     <td><span className={`admin-role ${hasAdmin ? 'admin-role-manager' : ''}`}>{hasAdmin ? 'ADMIN' : 'USER'}</span></td>
-                    <td>{own
-                      ? <span className="admin-muted">No puedes editar tu propio rol aquí</span>
-                      : <button type="button" className={`admin-role-button ${hasAdmin ? 'admin-revoke' : 'admin-grant'}`} disabled={busyId !== null} onClick={() => { void toggleAdmin(person) }}>
-                        {busyId === person.id ? 'Guardando…' : hasAdmin ? 'Revocar ADMIN' : 'Conceder ADMIN'}
-                      </button>}
+
+                    <td>
+                      {own ? (
+                        <span className="admin-muted">
+                          No puedes modificar tu propia cuenta aquí
+                        </span>
+                      ) : (
+                        <div className="admin-actions">
+                          <button
+                            type="button"
+                            className={`admin-role-button ${hasAdmin ? 'admin-revoke' : 'admin-grant'
+                              }`}
+                            disabled={busyId !== null}
+                            onClick={() => { void toggleAdmin(person) }}
+                          >
+                            {busyId === person.id
+                              ? 'Procesando…'
+                              : hasAdmin
+                                ? 'Revocar ADMIN'
+                                : 'Conceder ADMIN'}
+                          </button>
+
+                          {!hasAdmin && (
+                            <button
+                              type="button"
+                              className="admin-delete-button"
+                              disabled={busyId !== null}
+                              onClick={() => { void deleteUser(person) }}
+                            >
+                              {busyId === person.id
+                                ? 'Eliminando…'
+                                : 'Eliminar usuario'}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
+
                   </tr>
                 })}</tbody>
               </table>
