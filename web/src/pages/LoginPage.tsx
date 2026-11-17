@@ -34,6 +34,6 @@ export function LoginPage() {
         {error && <Alert>{error}</Alert>}
         <button className="btn btn-primary btn-full" disabled={busy}>{busy ? 'Ingresando…' : 'Entrar a Manka →'}</button>
       </form><GoogleSignInButton mode="login" /><p className="auth-switch">¿Todavía no tienes cuenta? <Link to="/registro">Regístrate gratis</Link></p>
-      <p className="auth-foot">Conectado a tu API de Spring Boot · puerto 8083</p>
+      <p className="auth-foot">Manka ahora esta conectado a la API</p>
     </div></section></main>
 }
