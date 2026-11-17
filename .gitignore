@@ -62,3 +62,11 @@ Thumbs.db
 # ==========================
 *.tsbuildinfo
 .cache/
+
+
+mobile/node_modules/
+mobile/.expo/
+mobile/.env
+mobile/.env.*
+!mobile/.env.example
+mobile/dist/

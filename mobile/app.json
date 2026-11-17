@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Manka",
+    "slug": "manka-mobile",
+    "version": "1.0.0",
+    "scheme": "manka",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "pe.manka.mobile"
+    },
+    "android": {
+      "package": "pe.manka.mobile",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "@react-native-google-signin/google-signin"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "67b9c905-0e2b-4ba6-804e-f08d326131a9"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/67b9c905-0e2b-4ba6-804e-f08d326131a9"
+    }
+  }
+}
