@@ -1,6 +1,14 @@
+import axios from 'axios'
 import * as SecureStore from 'expo-secure-store'
 
-// No hay Vite en React Native. EXPO_PUBLIC_ se reemplaza en el bundle de Expo.
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipAuth?: boolean
+    _retry?: boolean
+  }
+}
+
+// No hay Vite en React Native: EXPO_PUBLIC_ se incorpora al bundle de Expo.
 const BASE = (process.env.EXPO_PUBLIC_API_URL || 'https://manka-backend-production.up.railway.app').replace(/\/+$/, '')
 const ACCESS_KEY = 'manka_access_token'
 const REFRESH_KEY = 'manka_refresh_token'
@@ -13,10 +21,13 @@ export const session = {
   async hydrate() {
     try {
       const [access, refresh] = await Promise.all([
-        SecureStore.getItemAsync(ACCESS_KEY), SecureStore.getItemAsync(REFRESH_KEY),
+        SecureStore.getItemAsync(ACCESS_KEY),
+        SecureStore.getItemAsync(REFRESH_KEY),
       ])
       cache = { access, refresh }
-    } catch { cache = { access: null, refresh: null } }
+    } catch {
+      cache = { access: null, refresh: null }
+    }
   },
   access: () => cache.access,
   refresh: () => cache.refresh,
@@ -30,7 +41,8 @@ export const session = {
   async clear() {
     cache = { access: null, refresh: null }
     await Promise.allSettled([
-      SecureStore.deleteItemAsync(ACCESS_KEY), SecureStore.deleteItemAsync(REFRESH_KEY),
+      SecureStore.deleteItemAsync(ACCESS_KEY),
+      SecureStore.deleteItemAsync(REFRESH_KEY),
     ])
   },
   onExpired(callback: (() => void) | null) { onExpired = callback },
@@ -44,8 +56,9 @@ export class ApiError extends Error {
 }
 
 export function describeError(error: unknown): string {
+  if (axios.isCancel(error)) return 'Solicitud cancelada.'
   if (error instanceof ApiError) {
-    if (error.status === 0) return 'No se pudo conectar con la API de Railway. Comprueba tu internet.'
+    if (error.status === 0) return error.message
     if (error.status === 401) return 'Credenciales incorrectas o sesión vencida.'
     if (error.status === 403) return 'No tienes permisos para esta operación.'
     return error.message
@@ -53,15 +66,19 @@ export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : 'Ocurrió un error inesperado.'
 }
 
-function parse(data: string): unknown {
-  try { return data ? JSON.parse(data) : null } catch { return data }
+function parse(data: unknown): unknown {
+  if (data === '' || data === undefined) return null
+  if (typeof data !== 'string') return data
+  try { return JSON.parse(data) } catch { return data }
 }
+
 function messageFor(data: unknown, status: number): string {
-  if (data && typeof data === 'object') {
-    const item = data as Record<string, unknown>
+  const parsed = parse(data)
+  if (parsed && typeof parsed === 'object') {
+    const item = parsed as Record<string, unknown>
     if (item.errors && typeof item.errors === 'object') {
-      const errors = Object.values(item.errors).filter(v => typeof v === 'string')
-      if (errors.length) return errors.join(' | ')
+      const messages = Object.values(item.errors).filter(v => typeof v === 'string')
+      if (messages.length) return messages.join(' | ')
     }
     for (const key of ['detail', 'message', 'title', 'error']) {
       if (typeof item[key] === 'string' && item[key]) return String(item[key])
@@ -70,26 +87,71 @@ function messageFor(data: unknown, status: number): string {
   return `El servidor respondió con HTTP ${status}`
 }
 
+const client = axios.create({
+  baseURL: BASE,
+  timeout: 20000,
+  headers: { Accept: 'application/json' },
+})
+const refreshClient = axios.create({ baseURL: BASE, timeout: 20000 })
+
 let refreshPromise: Promise<boolean> | null = null
 async function renewSession(): Promise<boolean> {
-  if (!cache.refresh) return false
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      try {
-        const response = await fetch(`${BASE}/auth/refresh`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: cache.refresh }),
-        })
-        if (!response.ok) return false
-        const tokens = await response.json() as Tokens
-        if (!tokens.token || !tokens.refreshToken) return false
-        await session.save(tokens)
-        return true
-      } catch { return false }
-    })()
-  }
+  if (refreshPromise) return refreshPromise
+  const refreshToken = session.refresh()
+  if (!refreshToken) return false
+  refreshPromise = (async () => {
+    try {
+      const response = await refreshClient.post<Tokens>('/auth/refresh', { refreshToken })
+      const tokens = response.data
+      if (!tokens?.token || !tokens?.refreshToken) return false
+      await session.save(tokens)
+      return true
+    } catch {
+      return false
+    }
+  })()
   try { return await refreshPromise } finally { refreshPromise = null }
 }
+
+client.interceptors.request.use(config => {
+  if (config.skipAuth) {
+    config.headers.delete('Authorization')
+  } else {
+    const access = session.access()
+    if (access) config.headers.set('Authorization', `Bearer ${access}`)
+  }
+  return config
+})
+
+client.interceptors.response.use(
+  response => {
+    response.data = parse(response.data) // HTTP 204 => null
+    return response
+  },
+  async (error: unknown) => {
+    if (axios.isCancel(error)) return Promise.reject(error)
+    if (!axios.isAxiosError(error)) return Promise.reject(error)
+
+    const original = error.config
+    if (
+      error.response?.status === 401 && original &&
+      !original.skipAuth && !original._retry && session.refresh()
+    ) {
+      original._retry = true
+      if (await renewSession()) return client.request(original)
+      await session.clear()
+      onExpired?.()
+    }
+
+    const status = error.response?.status ?? 0
+    const message = status
+      ? messageFor(error.response?.data, status)
+      : error.code === 'ECONNABORTED'
+        ? 'La solicitud tardó demasiado. Intenta nuevamente.'
+        : 'No se pudo conectar con la API de Railway. Comprueba tu internet.'
+    return Promise.reject(new ApiError(status, message))
+  },
+)
 
 type Query = Record<string, string | number | boolean | null | undefined>
 type Options = {
@@ -99,35 +161,22 @@ type Options = {
   signal?: AbortSignal
   auth?: boolean
 }
+
 export async function api<T>(path: string, options: Options = {}): Promise<T> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(options.query ?? {})) {
-    if (value !== null && value !== undefined && value !== '') params.set(key, String(value))
-  }
-  const url = `${BASE}${path}${params.size ? '?' + params.toString() : ''}`
-  async function request(retry: boolean): Promise<T> {
-    const headers: Record<string, string> = { Accept: 'application/json' }
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json'
-    if (options.auth !== false && cache.access) headers.Authorization = `Bearer ${cache.access}`
-    let response: Response
-    try {
-      response = await fetch(url, {
-        method: options.method || 'GET', headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: options.signal,
-      })
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw error
-      throw new ApiError(0, 'Error de conexión')
+    if (value !== null && value !== undefined && value !== '') {
+      params.set(key, String(value))
     }
-    if (response.status === 401 && retry && options.auth !== false && cache.refresh) {
-      if (await renewSession()) return request(false)
-      await session.clear()
-      onExpired?.()
-    }
-    const data = parse(await response.text()) // 204 No Content => null
-    if (!response.ok) throw new ApiError(response.status, messageFor(data, response.status))
-    return data as T
   }
-  return request(true)
+  const url = `${path}${params.size ? `?${params.toString()}` : ''}`
+  const response = await client.request<T>({
+    url,
+    method: options.method ?? 'GET',
+    data: options.body,
+    signal: options.signal,
+    skipAuth: options.auth === false,
+    headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
+  })
+  return response.data
 }
