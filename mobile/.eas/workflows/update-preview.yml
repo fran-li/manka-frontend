@@ -1,0 +1,18 @@
+
+name: Manka Mobile - Auto Update Preview
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mobile/**'
+
+jobs:
+  update_android:
+    name: Publicar actualizacion Android
+    type: update
+    environment: preview
+    params:
+      platform: android
+      channel: preview
