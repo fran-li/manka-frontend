@@ -82,3 +82,19 @@ h1,h2,h3 { font-family: 'Manrope', sans-serif; letter-spacing: -.038em; }
 .auth-separator { display: flex; align-items: center; width: 100%; gap: 12px; color: #728078; font-size: 12px; }
 .auth-separator::before, .auth-separator::after { content: ''; height: 1px; flex: 1; background-color: #dbe3da; }
 .auth-google-button { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+
+/* Paginación avanzada reutilizable: web Explorar + ¿Qué cocino? */
+.pager { margin: 28px auto 38px; padding: 18px 20px; background: #fff; border: 1px solid var(--line); border-radius: 16px; color: #718777; }
+.pager-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.pager-summary strong { color: var(--green); }
+.pager-size { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 700; }
+.pager-size select { border: 1px solid #dce6d9; border-radius: 9px; padding: 8px 11px; background: #f8faf5; color: var(--green); font-weight: 800; }
+.pager-controls { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 17px; }
+.pager-arrow { min-height: 37px; padding: 8px 13px; }
+.pager-numbers { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; }
+.pager-number-group { display: inline-flex; align-items: center; gap: 5px; }
+.pager-page { min-width: 36px; height: 36px; padding: 0 6px; border: 1px solid #dce6d9; background: #fff; color: var(--green); border-radius: 9px; font-size: 13px; font-weight: 800; }
+.pager-page:hover:not(:disabled) { background: #edf5ea; }
+.pager-page.is-current { color: #fff; background: var(--green); border-color: var(--green); opacity: 1; cursor: default; }
+.pager-ellipsis { padding: 0 4px; color: #a0b0a1; }
+@media (max-width: 530px) { .pager { padding: 14px 11px; } .pager-summary { justify-content: center; text-align: center; } .pager-controls { gap: 7px; } .pager-arrow { padding: 8px 10px; font-size: 12px; } .pager-page { min-width: 32px; height: 34px; } }
