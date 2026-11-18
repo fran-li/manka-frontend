@@ -107,7 +107,7 @@ export default function LoginScreen() {
       <Banner text={error} />
 
       <Button
-        title={busy ? 'Ingresando…' : 'Ingresa a Manka →'}
+        title={busy ? 'Ingresando…' : 'Entra a Manka →'}
         onPress={() => void submit()}
         disabled={busy}
       />
