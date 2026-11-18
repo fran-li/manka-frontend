@@ -2,7 +2,7 @@
   "expo": {
     "name": "Manka",
     "slug": "manka-mobile",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "scheme": "manka",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -19,7 +19,22 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Manka necesita la cámara para escanear códigos de barras de alimentos.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Manka utiliza tu ubicación solo para buscar mercados cercanos cuando tú lo solicites.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

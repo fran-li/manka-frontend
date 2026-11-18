@@ -39,6 +39,8 @@ export default function PantryScreen() {
       {loading ? <Busy/> : <>
         <IngredientPicker selected={selected} onChange={v => { setSelected(v); setMessage('') }} placeholder="Añadir ingrediente…" />
         <Button title={saving ? 'Guardando…' : 'Guardar despensa'} disabled={saving || !changed} onPress={() => void save()} />
+        <Button title="📷 Escanear alimento" outline onPress={() => router.push('/(drawer)/escanear')} />
+        <Button title="📍 Encontrar mercados cercanos" outline onPress={() => router.push('/(drawer)/mercados')} />
         <Button title="Buscar recetas →" outline onPress={() => router.push('/(drawer)/cocinar')} />
       </>}
       <Banner text={error} /><Banner text={message} kind="success"/>

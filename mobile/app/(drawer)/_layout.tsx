@@ -83,6 +83,30 @@ export default function MankaDrawer() {
       />
 
       <Drawer.Screen
+        name="escanear"
+        options={{
+          drawerLabel: 'Escanear alimentos',
+          title: 'Escanear alimentos',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="barcode-outline" size={size}
+              color={typeof color === 'string' ? color : palette.green} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="mercados"
+        options={{
+          drawerLabel: 'Mercados cercanos',
+          title: 'Mercados cercanos',
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="location-outline" size={size}
+              color={typeof color === 'string' ? color : palette.green} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
         name="favoritos"
         options={{
           drawerLabel: 'Favoritos',

@@ -12,10 +12,11 @@ function getCatalog() {
   if (!catalogCache) catalogCache = catalogApi.allIngredients().catch(error => { catalogCache = null; throw error })
   return catalogCache
 }
-export function IngredientPicker({ selected, onChange, placeholder = 'Ej. pollo, papa, tomate…' }: {
-  selected: Ingredient[]; onChange(items: Ingredient[]): void; placeholder?: string
+export function IngredientPicker({ selected, onChange, placeholder = 'Ej. pollo, papa, tomate…', initialQuery = '', label = '¿Qué ingredientes tienes?' }: {
+  selected: Ingredient[]; onChange(items: Ingredient[]): void; placeholder?: string; initialQuery?: string; label?: string
 }) {
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initialQuery)
+  useEffect(() => { setText(initialQuery) }, [initialQuery])
   const [suggestions, setSuggestions] = useState<Ingredient[]>([])
   const [hint, setHint] = useState('')
   const [busy, setBusy] = useState(false)
@@ -47,7 +48,7 @@ export function IngredientPicker({ selected, onChange, placeholder = 'Ej. pollo,
     setText(''); setSuggestions([]); setHint('')
   }
   return <View style={{ gap: 9 }}>
-    <Text style={s.label}>¿Qué ingredientes tienes?</Text>
+    <Text style={s.label}>{label}</Text>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <TextInput style={[s.input, { flex: 1 }]} value={text} onChangeText={setText} placeholder={placeholder}
         placeholderTextColor="#9aa99d" autoCapitalize="none" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => { if (suggestions[0]) pick(suggestions[0]) }} />
